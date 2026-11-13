@@ -65,6 +65,23 @@ For RPCs that have no side effects, it is possible to use GET requests instead:
 < {"greeting": "Hello, Buf!"}
 ```
 
+GET puts the message in the URL. For messages that are large, binary, or
+better kept out of URLs, the HTTP QUERY method carries the message in the
+request content instead, just like a POST:
+
+```http
+> QUERY /connectrpc.greet.v1.GreetService/Greet HTTP/1.1
+> Host: demo.connectrpc.com
+> Content-Type: application/json
+>
+> {"name": "Buf"}
+
+< HTTP/1.1 200 OK
+< Content-Type: application/json
+<
+< {"greeting": "Hello, Buf!"}
+```
+
 A request is considered to have no side effects if the associated RPC is
 annotated as such with the `IdempotencyLevel` option:
 
@@ -110,9 +127,10 @@ errors.
 
 ## Outline
 
-* **Request** &rarr; Unary-Request / Unary-Get-Request / Streaming-Request
+* **Request** &rarr; Unary-Request / Unary-Get-Request / Unary-Query-Request / Streaming-Request
 * **[Unary-Request](#unary-request)** &rarr; Unary-Request-Headers Bare-Message
 * **[Unary-Get-Request](#unary-get-request)** &rarr; Unary-Get-Request-Headers
+* **[Unary-Query-Request](#unary-query-request)** &rarr; Unary-Query-Request-Headers Bare-Message
 * **[Streaming-Request](#streaming-request)** &rarr; Streaming-Request-Headers \*Enveloped-Message
 
 Clients send HTTP requests to servers. Unary requests contain exactly one
@@ -320,6 +338,97 @@ revisions to this protocol.) Clients, especially generated clients, should send
 this header. Servers and proxies may reject traffic without this parameter with
 an HTTP status code of 400.
 
+### Unary-Query-Request
+
+* **Unary-Query-Request** &rarr; Unary-Query-Request-Headers Bare-Message
+* **Unary-Query-Request-Headers** &rarr; Unary-Query-Call-Specification \*Leading-Metadata
+* **Unary-Query-Call-Specification** &rarr; Method-Query Path Unary-Content-Type \[Connect-Protocol-Version\] \[Timeout\] \[Content-Encoding\] \[Accept-Encoding\]
+* **Method-Query** &rarr; ":method QUERY"
+
+**Unary-Query-Request** is a variant of the unary request for side-effect-free
+RPCs that uses the HTTP QUERY method defined in [RFC 10008][]. QUERY is safe,
+idempotent, and carries its message in the request content, so it avoids the
+URL length limits, base64 encoding, and URL logging that come with
+**Unary-Get-Request**. A **Unary-Query-Request** is a **Unary-Request** with
+the method changed from POST to QUERY and nothing else.
+
+Every rule for **Unary-Request** applies to **Unary-Query-Request** unchanged.
+This includes the **Path**, **Unary-Content-Type**, **Connect-Protocol-Version**,
+**Timeout**, **Content-Encoding**, **Accept-Encoding**, and **Leading-Metadata**
+rules, the treatment of **Bare-Message**, and the **Unary-Response** that the
+server returns, including its error format and HTTP status codes. A
+zero-length **Bare-Message** is a valid message, as it is for POST. The method
+is the exact, uppercase string "QUERY". None of the **Query-Get** parameters
+apply, and any query part of the URI is ignored, as it is for POST.
+
+Only the Connect protocol uses QUERY. Streaming RPCs, gRPC, and gRPC-Web
+continue to use POST exclusively.
+
+#### Eligibility
+
+An RPC accepts **Unary-Query-Request** if and only if it is a unary RPC
+annotated with `idempotency_level = NO_SIDE_EFFECTS`. This is the same
+condition that applies to **Unary-Get-Request**. Streaming RPCs and RPCs with
+any other idempotency level, including `IDEMPOTENT`, must not accept QUERY.
+Clients must not send QUERY requests for them.
+
+#### Server behavior
+
+Servers that implement QUERY should accept **Unary-Query-Request** for every
+eligible RPC by default, and should provide a way to turn it off. A server
+with QUERY turned off must behave as if it did not recognize the method.
+
+If a server receives a QUERY request for an RPC that does not accept it, either
+because the RPC is ineligible or because QUERY is turned off, it must respond
+with an HTTP status code of 405 Method Not Allowed and an `Allow` header. The
+`Allow` header must list QUERY if and only if the RPC accepts QUERY requests.
+
+If the **Unary-Content-Type** is missing or specifies an unsupported
+**Message-Codec**, servers must respond with an HTTP status code of 415
+Unsupported Media Type. Servers that do so should include an `Accept-Query`
+header in the response, which RFC 10008 defines as a Structured Field List
+([RFC 9651][]) of media types. It should list the unary Connect content types
+the server supports, for example `Accept-Query: application/proto, application/json`.
+It must not list content types that cannot be used with QUERY, such as gRPC,
+gRPC-Web, or streaming content types.
+
+Responses to QUERY requests are cacheable, and shared caches that support QUERY
+include the request content and its `Content-Type` and `Content-Encoding`
+headers in the cache key. Servers do not need to add `Vary: Content-Type` for
+this. Wherever a server adds cache-related behavior to responses to GET
+requests, such as `Vary` headers or conditional request handling, it should do
+the same for QUERY.
+
+QUERY is not a CORS-safelisted method, so browsers always send a preflight
+request before a cross-origin QUERY request. Servers that support cross-origin
+requests must include QUERY in the `Access-Control-Allow-Methods` response to
+that preflight.
+
+#### Client behavior
+
+Clients must not send **Unary-Query-Request** unless the user has opted in.
+When the user has opted in, clients use it only for eligible RPCs and continue
+to use POST for all others.
+
+Clients that support both GET and QUERY and have both enabled choose a method
+for each eligible RPC in this order: GET if the request would be sent as a
+**Unary-Get-Request** (for example, because it fits within any configured size
+limit), otherwise QUERY, and POST only if QUERY is not enabled. In other words,
+QUERY replaces POST, not GET. Where a client falls back to POST when a GET
+request would be too large, it should fall back to QUERY instead when QUERY is
+enabled. Size limits for GET do not apply to QUERY.
+
+Message payloads in QUERY requests should be encoded in a deterministic
+fashion, for the same reasons given for **Unary-Get-Request**. Cache keys for
+QUERY include the request content, so semantically identical messages that
+encode differently produce separate cache entries.
+
+Clients must not silently retry a failed QUERY request with POST. If a server or
+intermediary rejects QUERY, for example with 405 Method Not Allowed or 501 Not
+Implemented, clients must report the failure as they would any other HTTP error
+for a unary RPC. Clients handle responses exactly as they do for POST and
+ignore `Accept-Query`.
+
 ### Unary-Response
 
 * **Unary-Response** &rarr; Unary-Response-Headers Bare-Message
@@ -394,6 +503,52 @@ The same RPC, but sent as a unary GET request instead:
 
 (Note that when typing into a browser URL bar, most characters will
 automatically be encoded for you.)
+
+The same RPC, but sent as a unary QUERY request, which looks just like the POST
+request with a different method:
+
+```http
+> QUERY /connectrpc.greet.v1.GreetService/Greet HTTP/1.1
+> Host: demo.connectrpc.com
+> Content-Type: application/json
+> Connect-Protocol-Version: 1
+>
+> {"name": "Buf"}
+
+< HTTP/1.1 200 OK
+< Content-Type: application/json
+<
+< {"greeting": "Hello, Buf!"}
+```
+
+A QUERY request to an RPC that does not accept it, such as one that is not
+declared `NO_SIDE_EFFECTS`, is rejected with a 405 whose `Allow` header omits
+QUERY:
+
+```http
+> QUERY /connectrpc.greet.v1.GreetService/Record HTTP/1.1
+> Host: demo.connectrpc.com
+> Content-Type: application/json
+>
+> {"name": "Buf"}
+
+< HTTP/1.1 405 Method Not Allowed
+< Allow: POST
+```
+
+A QUERY request with an unsupported content type is rejected with a 415, and the
+server lists the content types it supports:
+
+```http
+> QUERY /connectrpc.greet.v1.GreetService/Greet HTTP/1.1
+> Host: demo.connectrpc.com
+> Content-Type: application/xml
+>
+> <name>Buf</name>
+
+< HTTP/1.1 415 Unsupported Media Type
+< Accept-Query: application/proto, application/json
+```
 
 The same RPC, but with a 5s timeout, asymmetric compression, and some
 custom leading and trailing metadata.
@@ -702,3 +857,5 @@ Protocol Buffers support unary RPCs and all three types of streaming.
 [gRPC's HTTP/2 protocol]: https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md
 [rfc-http-semantics]: https://www.rfc-editor.org/rfc/rfc9110.html
 [Section 8.3 of RFC 9110]: https://www.rfc-editor.org/rfc/rfc9110.html#section-8.3
+[RFC 10008]: https://www.rfc-editor.org/rfc/rfc10008.html
+[RFC 9651]: https://www.rfc-editor.org/rfc/rfc9651.html
