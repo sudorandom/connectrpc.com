@@ -73,10 +73,11 @@ QUERY is available for the same procedures as GET: unary procedures marked
 always use POST.
 
 Handlers accept QUERY requests by default, so you don't need to change anything
-on your server. QUERY requires a recent Node.js release. See the
-[Connect-ES documentation](https://github.com/connectrpc/connect-es) for the
-supported versions. [Fastify](https://fastify.dev/) routes QUERY requests since
-v5.11.0, and earlier versions respond with a 404. To turn QUERY off, set
+on your server. Serving QUERY over HTTP/1.1 requires Node.js v22.2.0 or later.
+Node.js v22.0.0 and v22.1.0 report the wrong method for QUERY requests on
+`node:http` servers, even though they are within the supported range. HTTP/2
+servers are not affected. [Fastify](https://fastify.dev/) routes QUERY requests
+since v5.11.0, and earlier versions respond with a 404. To turn QUERY off, set
 `allowHttpQuery` to `false` in the router options of your adapter or plugin.
 Procedures then respond to QUERY with `405 Method Not Allowed`:
 
