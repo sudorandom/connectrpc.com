@@ -76,5 +76,5 @@ A few practical points before you enable QUERY:
   is no way to avoid the preflight. Your server must allow QUERY in
   `Access-Control-Allow-Methods`. See the [CORS documentation](/docs/cors/).
 * Some proxies, CDNs, and firewalls reject methods they don't recognize, and
-  many caches don't store QUERY responses yet. Check that your infrastructure
+  caches generally don't store QUERY responses yet, so don't expect cache hits from QUERY today. Check that your infrastructure
   forwards QUERY before relying on it.

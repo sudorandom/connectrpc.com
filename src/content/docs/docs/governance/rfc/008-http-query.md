@@ -45,7 +45,8 @@ Connect, this means large and binary messages can use a method that signals
 "no side effects" without any URL encoding.
 
 We don't want to oversell caching. QUERY is new, and cache support for it is
-young: many caches will not store QUERY responses at first, and caches that do
+young: as of late 2026, no released proxy cache, CDN, or browser cache that we
+found stores QUERY responses, and caches that do in future
 must read the whole request content to compute a key, which is more work than
 keying on a URL. For now, the dependable benefits are the semantics (retry
 safety, intent visible to infrastructure) and the removal of GET's URL
@@ -209,9 +210,9 @@ for each implementation need to cover this.
   QUERY in their CORS configuration or the browser blocks the call.
 * **HTTP stacks that reject the method token.** Older runtime HTTP parsers
   reject the method, some server frameworks route it only in recent versions,
-  and at least one HTTP client library needs explicit handling to send a body
-  with it. Implementations need to check their stacks and document any that
-  can't send or receive QUERY. The method must be sent as the exact string
+  and older versions of some HTTP client libraries do not send a body with QUERY.
+  Implementations may need to guard for that, check their stacks, and document
+  any that can't send or receive QUERY. The method must be sent as the exact string
   `QUERY`, because `fetch` does not normalize the case of this method.
 * **Middleware and access rules keyed on POST.** Authentication, authorization,
   rate-limiting, logging, and metrics code that matches on the method POST won't

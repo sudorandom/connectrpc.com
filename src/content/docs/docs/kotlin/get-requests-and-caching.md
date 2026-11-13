@@ -73,8 +73,7 @@ for example with a 405 or 501, the call fails with an error. The client never
 retries a rejected QUERY request as POST, so only enable it for servers that
 support it.
 
-Some proxies, CDNs, and firewalls reject methods they don't recognize, and many
-caches don't store QUERY responses yet. Check that your infrastructure forwards
+Some proxies, CDNs, and firewalls reject methods they don't recognize, and caches generally don't store QUERY responses yet, so don't expect cache hits from QUERY today. Check that your infrastructure forwards
 QUERY before relying on it.
 
 [rfc-10008]: https://www.rfc-editor.org/rfc/rfc10008.html

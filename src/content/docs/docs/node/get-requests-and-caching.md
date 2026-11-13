@@ -118,7 +118,7 @@ A few practical points before you enable QUERY:
   from `@connectrpc/connect` includes QUERY in `cors.allowedMethods`. See the
   [CORS documentation](/docs/cors/).
 * Some proxies, CDNs, and firewalls reject methods they don't recognize, and
-  many caches don't store QUERY responses yet. Check that your infrastructure
+  caches generally don't store QUERY responses yet, so don't expect cache hits from QUERY today. Check that your infrastructure
   forwards QUERY before relying on it.
 
 ## Caching

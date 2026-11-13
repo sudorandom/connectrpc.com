@@ -127,7 +127,7 @@ A few practical points before you enable QUERY:
   because QUERY isn't one of the methods allowed without one. See the
   [CORS documentation](/docs/cors/).
 * Some proxies, CDNs, and firewalls reject methods they don't recognize, and
-  many caches don't store QUERY responses yet. Check that your infrastructure
+  caches generally don't store QUERY responses yet, so don't expect cache hits from QUERY today. Check that your infrastructure
   forwards QUERY before relying on it.
 * Clients encode QUERY messages deterministically when the codec supports it,
   because caches key on the request body.
@@ -156,8 +156,8 @@ would specify that the request should only be cached in private caches, such as
 the user agent itself, and *not* CDNs or reverse proxies&mdash;this would be
 appropriate, for example, for authenticated requests.
 
-QUERY responses are cacheable too, but caching them is newer and less widely
-supported than caching GET responses. Handlers respond to QUERY requests with
+QUERY responses are cacheable in principle, but caches generally don't store
+them yet, so don't expect cache hits from QUERY today. Handlers respond to QUERY requests with
 `Vary: Accept-Encoding`, as they do for GET.
 
 Handlers can also support HTTP [conditional
