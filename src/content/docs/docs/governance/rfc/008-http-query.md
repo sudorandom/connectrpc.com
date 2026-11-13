@@ -124,8 +124,9 @@ puts the request content type in the cache key.
 ### Client behavior
 
 QUERY is off by default. Each client gets an option that mirrors its existing
-"use HTTP GET" option in naming, placement, and documentation. The option only
-affects eligible procedures, using the same idempotency information that gates
+"use HTTP GET" option in naming, placement, and documentation. Where a client
+has no such options and exposes requests as separate call functions, it gets a
+separate QUERY call function instead. The option only affects eligible procedures, using the same idempotency information that gates
 GET. Everything else keeps using POST. gRPC and gRPC-Web transports ignore the
 option, as they ignore the GET option.
 
@@ -167,30 +168,43 @@ for each implementation need to cover this.
 
 ## Anticipated complications
 
-* **Intermediaries that don't know QUERY.** Some firewalls, API gateways, CDNs,
-  and reverse proxies reject methods they don't recognize, answer them with 405
-  or 501, or strip them. Because QUERY is opt-in for clients, this only affects
-  users who turn it on, and the failure is a clear HTTP error. They need to
-  check their path end to end. We deliberately don't mitigate this with an
-  automatic downgrade (see below).
+* **Intermediaries that don't know QUERY.** As of November 2026, support for
+  the method is uneven across common infrastructure:
+  * A widely deployed open-source web application firewall rule set allows only
+    GET, HEAD, POST, and OPTIONS by default, and enforces that list at its
+    lowest strictness level, so default deployments reject QUERY with a 403.
+    Several managed firewalls inherit or mirror that list.
+  * Some CDNs restrict methods to a fixed list that can't be extended, so QUERY
+    can't be forwarded through them at all today. Others reject any method
+    without an explicit allow rule, with a 501.
+  * Most general-purpose reverse proxies forward QUERY unchanged. Not all do: one
+    widely used proxy rejected it over HTTP/1.1 until a late-2026 release, and a
+    caching proxy answers 501 in its default configuration.
+  * Some routing APIs enumerate HTTP methods and can't match on QUERY yet.
+
+  Because QUERY is opt-in for clients, only users who turn it on are affected,
+  and the failure is an ordinary HTTP error. They need to check their path end
+  to end. We deliberately don't mitigate this with an automatic downgrade (see
+  below).
 * **Caches that don't key on request content.** A cache that treats QUERY like
-  GET and keys on the URL alone could serve one query's response for another.
-  RFC 10008 requires the cache key to incorporate the request content, and
-  conforming caches do. Users who put a cache in front of a Connect server
-  should confirm theirs does, or that it doesn't cache QUERY at all. Several
-  caches don't cache QUERY yet, in which case users get correct behavior but
-  none of the caching benefit.
+  GET and keys on the URL alone would serve one query's response for another.
+  RFC 10008 requires the cache key to incorporate the request content. We found
+  no released cache that does this for QUERY, and some in-progress
+  implementations key on the URL alone, which is exactly the unsafe case. Users
+  who put a cache in front of a Connect server should confirm that it either
+  keys on request content or doesn't cache QUERY at all. Until caches catch up,
+  users get correct behavior but none of the caching benefit.
 * **Mandatory preflight in browsers.** Browsers send a CORS preflight before
   every cross-origin QUERY request, even when GET would have been a simple
   request. Cross-origin browser clients pay an extra round trip unless the
   preflight response is cached with `Access-Control-Max-Age`. Servers must allow
   QUERY in their CORS configuration or the browser blocks the call.
-* **HTTP stacks that reject the method token.** Some HTTP clients, servers,
-  and proxies validate methods against a fixed list and refuse unknown ones, and
-  some don't permit a body on a method they don't recognize. Implementations
-  need to check their stacks and document any that can't send or receive QUERY.
-  The method must be sent as the exact string `QUERY`, because `fetch` does not
-  normalize the case of this method.
+* **HTTP stacks that reject the method token.** Older runtime HTTP parsers
+  reject the method, some server frameworks route it only in recent versions,
+  and at least one HTTP client library needs explicit handling to send a body
+  with it. Implementations need to check their stacks and document any that
+  can't send or receive QUERY. The method must be sent as the exact string
+  `QUERY`, because `fetch` does not normalize the case of this method.
 * **Middleware and access rules keyed on POST.** Authentication, authorization,
   rate-limiting, logging, and metrics code that matches on the method POST won't
   match QUERY requests. Users who enable QUERY need to review this
@@ -205,6 +219,10 @@ for each implementation need to cover this.
   infrastructure that blocks unknown methods and expects the server to do the
   same, may now see traffic they didn't before. Users who need the old
   behavior can disable QUERY with the server option.
+* **Retry behavior differs.** RFC 10008 makes QUERY idempotent, so it can be
+  retried automatically after a connection failure, but proxies disagree: some
+  treat it as idempotent, and some retry only GET. Don't depend on automatic
+  retries of QUERY until you've checked the proxies in your path.
 * **No automatic downgrade.** A client that enables QUERY and meets an
   intermediary that rejects it gets an error and has to fix the path or turn the
   option off. This is less forgiving than silently falling back, but it keeps
@@ -220,9 +238,7 @@ for each implementation need to cover this.
 * **Automatic downgrade to POST**: Clients could try QUERY and fall back to POST
   when it's rejected. This would hide failures behind extra round trips, require
   clients to remember per-server state, and make it hard to tell which method a
-  call used. It could also turn a rejected call into a duplicated one if the
-  first request partly succeeded. Explicit opt-in and explicit errors are easier
-  to reason about.
+  call used. Explicit opt-in and explicit errors are easier to reason about.
 * **QUERY replacing GET outright**: It would be simpler to say that QUERY is the
   new way to send side-effect-free calls. But GET is understood by every cache,
   browser, and proxy, and can be typed into a URL bar. For requests that fit in
