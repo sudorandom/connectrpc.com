@@ -108,8 +108,12 @@ is handled exactly like a unary POST: content type and codec negotiation,
 compression, timeouts, size limits, and interceptors. Handlers and interceptors
 that can observe the HTTP method see `QUERY`.
 
-A missing or unsupported `Content-Type` receives `415 Unsupported Media Type`,
-as for POST. Servers that already advertise supported types with `Accept-Post`
+An unsupported `Content-Type` receives `415 Unsupported Media Type`, as for
+POST. A missing `Content-Type` receives either 400 or 415. RFC 10008 section 2.1
+requires a 4xx status when a request lacks media type information and gives 400
+as an example, so an HTTP layer that follows it literally rejects the request
+with 400 before Connect sees it. 415 is the usual Connect answer and 400 is
+equally conformant, so clients must expect either. Servers that already advertise supported types with `Accept-Post`
 on 415 responses should send `Accept-Query` on 415 responses to QUERY requests.
 RFC 10008 defines `Accept-Query` as a Structured Field List ([RFC 9651][rfc9651])
 of media types, so the value is a list of tokens such as

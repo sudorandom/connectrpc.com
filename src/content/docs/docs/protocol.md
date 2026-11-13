@@ -383,9 +383,13 @@ because the RPC is ineligible or because QUERY is turned off, it must respond
 with an HTTP status code of 405 Method Not Allowed and an `Allow` header. The
 `Allow` header must list QUERY if and only if the RPC accepts QUERY requests.
 
-If the **Unary-Content-Type** is missing or specifies an unsupported
-**Message-Codec**, servers must respond with an HTTP status code of 415
-Unsupported Media Type. Servers that do so should include an `Accept-Query`
+If the **Unary-Content-Type** is missing, servers must respond with an HTTP
+status code of 400 Bad Request or 415 Unsupported Media Type. 415 is the usual
+answer, as for POST, but 400 is also allowed because RFC 10008 requires a
+4xx status for a missing media type and an HTTP layer or intermediary may
+reject the request first. If the **Unary-Content-Type** specifies an unsupported
+**Message-Codec**, servers must respond with 415. Servers that respond with 415
+should include an `Accept-Query`
 header in the response, which RFC 10008 defines as a Structured Field List
 ([RFC 9651][]) of media types. It should list the unary Connect content types
 the server supports, for example `Accept-Query: application/proto, application/json`.
