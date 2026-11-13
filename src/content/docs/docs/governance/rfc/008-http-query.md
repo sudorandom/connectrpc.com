@@ -186,14 +186,18 @@ for each implementation need to cover this.
   and the failure is an ordinary HTTP error. They need to check their path end
   to end. We deliberately don't mitigate this with an automatic downgrade (see
   below).
-* **Caches that don't key on request content.** A cache that treats QUERY like
-  GET and keys on the URL alone would serve one query's response for another.
-  RFC 10008 requires the cache key to incorporate the request content. We found
-  no released cache that does this for QUERY, and some in-progress
-  implementations key on the URL alone, which is exactly the unsafe case. Users
-  who put a cache in front of a Connect server should confirm that it either
-  keys on request content or doesn't cache QUERY at all. Until caches catch up,
-  users get correct behavior but none of the caching benefit.
+* **Caching is largely unavailable today.** A survey found no released proxy
+  cache, CDN, or browser HTTP cache that stores QUERY responses, so the cache
+  benefit is prospective. Most pending changes in proxy caches add QUERY as a
+  recognized method and explicitly leave caching out until the cache key can
+  include the request content. At least one CDN's cache lookup rewrites a QUERY
+  into a body-less GET. RFC 10008 requires the cache key to incorporate the
+  request content, and a cache that keyed on the URL alone would serve one
+  query's response for another. Not every implementation is safe by default:
+  one pending change would let an operator enable QUERY caching without the
+  request content in the key. Operators who enable QUERY caching in an
+  intermediary must confirm that the cache key includes the request content.
+  Until then, users get correct behavior but none of the caching benefit.
 * **Mandatory preflight in browsers.** Browsers send a CORS preflight before
   every cross-origin QUERY request, even when GET would have been a simple
   request. Cross-origin browser clients pay an extra round trip unless the
