@@ -47,6 +47,21 @@ For details, take a look at the [blog post](https://buf.build/blog/introducing-c
 introducing the feature, and at the [protocol specification](/docs/protocol/#unary-get-request)
 for Connect.
 
+For servers that support the HTTP QUERY method ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html)),
+side-effect-free RPCs can also be called with the request message in the body,
+exactly as with POST but with a different method:
+
+```shellsession
+$ curl --request QUERY \
+    --header "Content-Type: application/json" \
+    --data '{"sentence": "I feel happy."}' \
+    https://demo.connectrpc.com/connectrpc.eliza.v1.ElizaService/Say
+```
+
+Unary RPCs that are marked side-effect free accept QUERY by default in servers
+that implement it. See the [protocol specification](/docs/protocol/#unary-query-request)
+for details.
+
 ## fetch API
 
 We recommend `@connectrpc/connect-web` so that the compiler can type-check your code, but

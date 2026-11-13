@@ -38,7 +38,7 @@ Access-Control-Expose-Headers: Grpc-Status, Grpc-Message, Grpc-Status-Details-Bi
 ### Connect
 
 ```http
-Access-Control-Allow-Methods: GET,POST
+Access-Control-Allow-Methods: GET,POST,QUERY
 Access-Control-Allow-Headers: Content-Type, Connect-Protocol-Version, Connect-Timeout-Ms, X-User-Agent
 ```
 
@@ -66,7 +66,7 @@ to cache the information:
 ```http
 HTTP/1.1 204 No Content
 Access-Control-Allow-Origin: https://connectrpc.com
-Access-Control-Allow-Methods: POST,GET
+Access-Control-Allow-Methods: POST,GET,QUERY
 Access-Control-Allow-Headers: Content-Type,Connect-Protocol-Version,Connect-Timeout-Ms,Grpc-Timeout,X-Grpc-Web,X-User-Agent
 Access-Control-Max-Age: 7200
 Vary: Origin,Access-Control-Request-Method,Access-Control-Request-Headers
@@ -82,8 +82,9 @@ requests from connectrpc.com via https with the default port 443.
 
 ### Allowing methods and headers
 
-`Access-Control-Allow-Methods: POST,GET` is required to support gRPC-Web and
-Connect. gRPC-Web will only use POST. Connect uses POST and optionally GET.
+`Access-Control-Allow-Methods: POST,GET,QUERY` is required to support gRPC-Web
+and Connect. gRPC-Web will only use POST. Connect uses POST and optionally GET
+and QUERY. If you don't use QUERY, you can omit it from the list.
 
 `Access-Control-Allow-Headers: Content-Type,Connect-Protocol-Version,Connect-Timeout-Ms,Grpc-Timeout,X-Grpc-Web,X-User-Agent`
 allows all necessary request headers for Connect and gRPC-Web.
@@ -143,6 +144,27 @@ request, but there are two requirements:
 
 If the first requirement is not met, a preflight request is issued. If the second
 requirement is not met, the request will error in the browser.
+
+## Connect QUERY
+
+Connect can also send side-effect-free RPCs with the HTTP QUERY method
+([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html)), which carries the
+message in the request body instead of the URL. Unlike GET, QUERY is not a
+CORS-safelisted method, so browsers always send a preflight request before a
+cross-origin QUERY request, even if no custom headers are set. The preflight
+asks for the method in `Access-Control-Request-Method`:
+
+```http
+OPTIONS /connectrpc.greet.v1.GreetService/Greet HTTP/1.1
+Origin: https://connectrpc.com
+Access-Control-Request-Method: QUERY
+Access-Control-Request-Headers: Connect-Protocol-Version,Content-Type
+[other headers elided...]
+```
+
+The preflight response must include `QUERY` in `Access-Control-Allow-Methods`, or
+the browser blocks the request. Use `Access-Control-Max-Age` to let browsers
+cache the result.
 
 ## Avoid wildcards
 

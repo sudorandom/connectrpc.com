@@ -33,7 +33,8 @@ to implement `Codec`. The interface is stream-oriented and context-aware:
 `MarshalWrite` encodes a message to an `io.Writer`, and `UnmarshalRead`
 decodes one from an `io.Reader`. To support [HTTP GET
 requests](/docs/go/get-requests-and-caching/), also implement `StableCodec`,
-which adds a deterministic `MarshalWriteStable` encoding. If your new
+which adds a deterministic `MarshalWriteStable` encoding. HTTP QUERY requests
+use it too when it's available. If your new
 serialization mechanism uses a schema, you'll
 also need to write a binary to generate RPC code from the schema. Typically,
 this binary is a plugin for the appropriate compiler (for example,

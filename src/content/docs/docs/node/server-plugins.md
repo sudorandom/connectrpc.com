@@ -277,6 +277,9 @@ await server.register(fastifyCors, {
 });
 ```
 
+`cors.allowedMethods` includes `QUERY` alongside `GET` and `POST`, so browser clients
+can use [HTTP QUERY](/docs/node/get-requests-and-caching/#http-query).
+
 Make sure to include application-specific request headers in the allowed headers,
 and response headers in the exposed headers. If your application uses trailers,
 they will be sent as header fields with a `Trailer-` prefix for Connect unary RPCs.

@@ -1,5 +1,5 @@
 ---
-title: Get Requests and Caching
+title: GET, QUERY, and Caching
 ---
 
 import VersionWarning from './_version-warning.mdx';
@@ -8,7 +8,9 @@ import VersionWarning from './_version-warning.mdx';
 
 Connect supports performing idempotent, side-effect free requests using an HTTP
 GET-based protocol. This makes it easier to cache certain kinds of requests in
-the browser, on your CDN, or in proxies and other middleboxes.
+the browser, on your CDN, or in proxies and other middleboxes. Connect also
+supports the HTTP QUERY method for the same procedures, which sends the message
+in the request body instead of the URL. See [HTTP QUERY](#http-query) below.
 
 :::note
 This functionality is **only** supported when using the Connect
@@ -45,10 +47,69 @@ see their respective documentation pages:
 * [Connect Go](/docs/go/get-requests-and-caching/)
 * [Connect Python](/docs/python/get-requests-and-caching/)
 
+## HTTP QUERY
+
+GET puts the whole message in the URL, so large messages can run into URL length
+limits, and binary messages must be base64-encoded. The HTTP QUERY method
+([RFC 10008][rfc-10008]) is safe and idempotent like GET, but carries the
+message in the request body like POST. Connect's [unary QUERY
+request](/docs/protocol/#unary-query-request) is a unary POST request with the
+method changed to QUERY and nothing else.
+
+QUERY is available for the same procedures as GET: unary procedures marked
+`NO_SIDE_EFFECTS`. It is only used with the Connect protocol. gRPC and gRPC-Web
+always use POST.
+
+Handlers accept QUERY requests by default, so you don't need to change anything
+on your server. Any other procedure answers a QUERY request with
+`405 Method Not Allowed` and an `Allow` header that omits `QUERY`. To turn QUERY
+off, call `with_http_query(false)` on `ConnectRpcService` or on `Server`. The
+server then treats QUERY as an unknown method:
+
+```rust
+let service = ConnectRpcService::new(router).with_http_query(false);
+```
+
+On the client, QUERY is a separate call function rather than an option:
+`call_unary_query` sends the same request as `call_unary` with the method
+changed to QUERY.
+
+```rust
+use connectrpc::client::{CallOptions, ClientConfig, HttpClient, call_unary_query};
+
+let response = call_unary_query::<_, StringValue, StringValueView<'static>>(
+    &HttpClient::plaintext(),
+    &ClientConfig::new("http://localhost:8080".parse()?),
+    Spec::client("/svc.Svc/Read", StreamType::Unary),
+    StringValue::from("hi"),
+    CallOptions::default(),
+)
+.await?;
+```
+
+`call_unary_query` doesn't check the method's idempotency level, so only use it
+for procedures marked `NO_SIDE_EFFECTS`. The server answers any other procedure
+with a 405. QUERY replaces POST, not GET: a caller that also sends GET requests
+should use GET for requests that fit in a URL, and `call_unary_query` for the
+rest.
+
+If the server or something between you and the server rejects a QUERY request,
+for example with a 405 or 501, the call returns an error. It is never retried as
+POST.
+
+A few practical points before you use QUERY:
+
+* Browsers always send a CORS preflight before a cross-origin QUERY request,
+  because QUERY isn't one of the methods allowed without one. See the
+  [CORS documentation](/docs/cors/).
+* Some proxies, CDNs, and firewalls reject methods they don't recognize, and
+  many caches don't store QUERY responses yet. Check that your infrastructure
+  forwards QUERY before relying on it.
+
 ## Caching
 
-Using GET requests will not necessarily automatically make browsers or proxies
-cache your RPCs. To ensure that requests are allowed to be cached, a handler
+Using GET or QUERY requests will not necessarily automatically make browsers or
+proxies cache your RPCs. To ensure that requests are allowed to be cached, a handler
 should also set the appropriate headers.
 
 For example, you may wish to set the `Cache-Control` header with a `max-age`
@@ -66,34 +127,21 @@ would specify that the request should only be cached in private caches, such as
 the user agent itself, and *not* CDNs or reverse proxies&mdash;this would be
 appropriate, for example, for authenticated requests.
 
-## Distinguishing GET Requests
+## Distinguishing GET and QUERY Requests
 
 In some cases, you might want to introduce behavior that only occurs when
-handling HTTP GET requests. The `RequestContext` doesn't include the HTTP
-method, but Tower middleware can add it to the request's extensions, which
-are passed through to handlers. For example, with axum middleware:
-
-```rust
-use axum::extract::Request;
-
-let app = axum::Router::new()
-    .fallback_service(router.into_axum_service())
-    .layer(axum::middleware::map_request(|mut req: Request| async move {
-        let method = req.method().clone();
-        req.extensions_mut().insert(method);
-        req
-    }));
-```
-
-Handlers can then read the method from the `RequestContext`:
+handling HTTP GET requests. Handlers can read the HTTP method from
+`RequestContext::method`, which is `POST`, `GET`, or `QUERY` for unary Connect
+requests, and `POST` for streaming and gRPC requests:
 
 ```rust
 let mut res = Response::new(GreetResponse::default());
-if ctx.extensions().get::<http::Method>() == Some(&http::Method::GET) {
+if ctx.method() == Some(&http::Method::GET) {
     res = res.with_header("cache-control", "max-age=604800");
 }
 ```
 
 [connect-grpc-bridge-docs]: https://www.envoyproxy.io/docs/envoy/v1.26.0/configuration/http/http_filters/connect_grpc_bridge_filter#config-http-filters-connect-grpc-bridge
 [cache-control-response-directives]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control#response_directives
+[rfc-10008]: https://www.rfc-editor.org/rfc/rfc10008.html
 [idempotency-level]: https://github.com/protocolbuffers/protobuf/blob/e5679c01e8f47e8a5e7172444676bda1c2ada875/src/google/protobuf/descriptor.proto#L795

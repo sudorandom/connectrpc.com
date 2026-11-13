@@ -177,6 +177,9 @@ func withCORS(h http.Handler) http.Handler {
 }
 ```
 
+`connectcors.AllowedMethods()` includes `QUERY` alongside `GET` and `POST`, so
+cross-origin browser clients can use [HTTP QUERY](/docs/go/get-requests-and-caching/#http-query).
+
 Make sure to include application-specific request headers in the allowed headers,
 and response headers in the exposed headers. If your application uses trailers,
 they will be sent as header fields with a `Trailer-` prefix for unary Connect

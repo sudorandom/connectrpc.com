@@ -1,10 +1,12 @@
 ---
-title: Get Requests and Caching
+title: GET, QUERY, and Caching
 ---
 
 Connect supports performing idempotent, side-effect free requests using an HTTP
 GET-based protocol. This makes it easier to cache certain kinds of requests in
-the browser, on your CDN, or in proxies and other middleboxes.
+the browser, on your CDN, or in proxies and other middleboxes. Connect also
+supports the HTTP QUERY method for the same procedures, which sends the message
+in the request body instead of the URL. See [HTTP QUERY](#http-query) below.
 
 :::note
 This functionality is **only** supported when using the Connect
@@ -57,10 +59,72 @@ For other clients, see their respective documentation pages:
 * [Connect Kotlin](/docs/kotlin/get-requests-and-caching/)
 * [Connect Python](/docs/python/get-requests-and-caching/)
 
+## HTTP QUERY
+
+GET puts the whole message in the URL, so large messages can run into URL length
+limits, and binary messages must be base64-encoded. The HTTP QUERY method
+([RFC 10008][rfc-10008]) is safe and idempotent like GET, but carries the
+message in the request body like POST. Connect's [unary QUERY
+request](/docs/protocol/#unary-query-request) is a unary POST request with the
+method changed to QUERY and nothing else.
+
+QUERY is available for the same procedures as GET: unary procedures marked
+`NO_SIDE_EFFECTS`. It is only used with the Connect protocol. gRPC and gRPC-web
+always use POST.
+
+Handlers accept QUERY requests by default, so you don't need to change anything
+on your server. QUERY requires a recent Node.js release. See the
+[Connect-ES documentation](https://github.com/connectrpc/connect-es) for the
+supported versions. [Fastify](https://fastify.dev/) routes QUERY requests since
+v5.11.0, and earlier versions respond with a 404. To turn QUERY off, set
+`allowHttpQuery` to `false` in the router options of your adapter or plugin.
+Procedures then respond to QUERY with `405 Method Not Allowed`:
+
+```ts
+await server.register(fastifyConnectPlugin, {
+  routes,
+  allowHttpQuery: false,
+});
+```
+
+Clients must opt in with the `useHttpQuery` option when creating the Connect
+transport:
+
+```js
+const transport = createConnectTransport({
+  baseUrl: "https://demo.connectrpc.com",
+  useHttpQuery: true,
+});
+const client = createClient(ElizaService, transport);
+const response = await client.say(request);
+console.log(response);
+```
+
+Methods annotated as side-effect free will use QUERY requests. All other
+requests will continue to use POST.
+
+QUERY replaces POST, not GET. If you enable both `useHttpGet` and
+`useHttpQuery`, side-effect free requests are still sent with GET.
+
+If the server or something between you and the server rejects a QUERY request,
+for example with a 405 or 501, the call fails with an error. Connect never
+retries a rejected QUERY request as POST, so only enable `useHttpQuery` for
+servers that support it.
+
+A few practical points before you enable QUERY:
+
+* Browsers always send a CORS preflight before a cross-origin QUERY request,
+  because QUERY isn't one of the methods allowed without one. The `cors` object
+  from `@connectrpc/connect` includes QUERY in `cors.allowedMethods`. See the
+  [CORS documentation](/docs/cors/).
+* Some proxies, CDNs, and firewalls reject methods they don't recognize, and
+  many caches don't store QUERY responses yet. Check that your infrastructure
+  forwards QUERY before relying on it.
+
 ## Caching
 
-Using GET requests will not necessarily automatically make browsers or proxies
-cache your RPCs. To ensure that requests are allowed to be cached, a handler
+Using GET or QUERY requests will not necessarily automatically make browsers or
+proxies cache your RPCs. To ensure that requests are allowed to be cached, a handler
 should also set the appropriate headers.
 
 For example, you may wish to set the `Cache-Control` header with a `max-age`
@@ -81,11 +145,11 @@ would specify that the request should only be cached in private caches, such as
 the user agent itself, and *not* CDNs or reverse proxies&mdash;this would be
 appropriate, for example, for authenticated requests.
 
-## Distinguishing GET Requests
+## Distinguishing GET and QUERY Requests
 
 In some cases, you might want to introduce behavior that only occurs when
 handling HTTP GET requests. This can be accomplished using
-`context.requestMethod`:
+`context.requestMethod`, which is `"POST"`, `"GET"`, or `"QUERY"`:
 
 ```ts
 if (context.requestMethod == "GET") {
@@ -94,5 +158,6 @@ if (context.requestMethod == "GET") {
 ```
 
 [connect-grpc-bridge-docs]: https://www.envoyproxy.io/docs/envoy/v1.26.0/configuration/http/http_filters/connect_grpc_bridge_filter#config-http-filters-connect-grpc-bridge
+[rfc-10008]: https://www.rfc-editor.org/rfc/rfc10008.html
 [idempotency-level]: https://github.com/protocolbuffers/protobuf/blob/e5679c01e8f47e8a5e7172444676bda1c2ada875/src/google/protobuf/descriptor.proto#L795
 [cache-control-response-directives]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control#response_directives

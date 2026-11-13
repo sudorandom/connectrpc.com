@@ -71,6 +71,41 @@ and the ability to switch between JSON and Protobuf binary encodings.
 The full list of config options
 can be found [in the Connect-Swift repository][protocol-client-config].
 
+### HTTP QUERY
+
+For unary RPCs that are marked `NO_SIDE_EFFECTS`, the Connect protocol can use
+the HTTP QUERY method ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html))
+instead of POST. QUERY is safe and idempotent like GET, but carries the message
+in the request body like POST. The request is otherwise identical to the POST
+request, as described in the [protocol
+specification](/docs/protocol/#unary-query-request). The gRPC and gRPC-Web
+protocols ignore this option and always use POST.
+
+QUERY requests are off by default. Opt in by setting `unaryQuery` on
+`ProtocolClientConfig`:
+
+```swift
+let protocolClient = ProtocolClient(
+    httpClient: URLSessionHTTPClient(),
+    config: ProtocolClientConfig(
+        host: "https://demo.connectrpc.com",
+        unaryQuery: .enabled
+    )
+)
+```
+
+QUERY replaces POST, not GET. If `unaryGET` is also enabled, requests that
+qualify for GET are still sent with GET, and requests that GET can't carry, such
+as those larger than the limit given to `.enabledForLimitedPayloadSizes`, are
+sent with QUERY instead of POST.
+
+If the server or something between you and the server rejects a QUERY request,
+for example with a 405 or 501, the call fails with an error. The client never
+retries a rejected QUERY request as POST, so only enable it for servers that
+support it. Servers accept QUERY by default, and can turn it off. Some proxies,
+CDNs, and firewalls reject methods they don't recognize, and many caches don't
+store QUERY responses yet.
+
 ### Compression
 
 Request compression and response decompression are provided through

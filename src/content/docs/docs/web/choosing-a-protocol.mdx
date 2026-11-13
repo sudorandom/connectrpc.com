@@ -31,6 +31,10 @@ const transport = createConnectTransport({
   // for side-effect free RPCs.
   useHttpGet: false,
 
+  // Set this option to true to use the HTTP QUERY method for side-effect free
+  // RPCs, with the message in the request body. QUERY replaces POST, not GET.
+  useHttpQuery: false,
+
   // Optional override of the fetch implementation used by the transport.
   fetch: globalThis.fetch,
 
@@ -45,7 +49,8 @@ inspector.
 
 Connect supports optionally using HTTP GET requests for side-effect free RPC
 calls, to enable easy use of request caching and more. For more information on
-HTTP GET requests, see [Get Requests](/docs/web/get-requests-and-caching/).
+HTTP GET requests, and about the HTTP QUERY alternative that sends the message
+in the request body, see [GET, QUERY, and Caching](/docs/web/get-requests-and-caching/).
 
 ## gRPC-web
 

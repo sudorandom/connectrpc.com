@@ -48,6 +48,37 @@ These options are mutually exclusive.
 If you'd like to use different protocols with different APIs, create one `Transport` for each protocol.
 :::
 
+### HTTP QUERY
+
+For unary RPCs that are marked `NO_SIDE_EFFECTS`, the Connect protocol can use
+the HTTP QUERY method ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html))
+instead of POST. QUERY is safe and idempotent like GET, but carries the message
+in the request body like POST. The request is otherwise identical to the POST
+request, as described in the [protocol
+specification](/docs/protocol/#unary-query-request).
+
+QUERY requests are off by default. Opt in by setting `useHttpQuery` on the
+Connect `Transport`:
+
+```dart
+final transport = protocol.Transport(
+  baseUrl: "https://demo.connectrpc.com",
+  codec: const ProtoCodec(),
+  httpClient: createHttpClient(),
+  useHttpQuery: true,
+);
+```
+
+QUERY replaces POST, not GET. If `useHttpGet` is also enabled, requests that can
+be sent with GET still are.
+
+If the server or something between you and the server rejects a QUERY request,
+for example with a 405 or 501, the call fails with an error. The client never
+retries a rejected QUERY request as POST, so only enable it for servers that
+support it. Servers accept QUERY by default, and can turn it off. Some proxies,
+CDNs, and firewalls reject methods they don't recognize, and many caches don't
+store QUERY responses yet.
+
 ### Compression
 
 Request compression and response decompression can be enabled for io platforms by providing the

@@ -1,5 +1,5 @@
 ---
-title: Get Requests and Caching
+title: GET, QUERY, and Caching
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -10,7 +10,8 @@ import VersionWarning from './_version-warning.mdx';
 
 Connect supports performing idempotent, side-effect free requests using an HTTP GET-based protocol.
 This makes it easier to cache certain kinds of requests in the browser, on your CDN, or in proxies and
-other middleboxes.
+other middleboxes. Connect also supports the HTTP QUERY method for the same procedures, which sends
+the message in the request body instead of the URL. See [HTTP QUERY](#http-query) below.
 
 If you are using clients to make query-style requests, you may want the ability to use Connect HTTP GET
 request support. To opt-in for a given procedure, you must mark it as being side-effect free using the
@@ -53,9 +54,62 @@ For other clients, see their respective documentation pages:
 - [Connect Web](/docs/web/get-requests-and-caching/)
 - [Connect Kotlin](/docs/kotlin/get-requests-and-caching/)
 
+## HTTP QUERY
+
+GET puts the whole message in the URL, so large messages can run into URL length limits, and binary
+messages must be base64-encoded. The HTTP QUERY method ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html))
+is safe and idempotent like GET, but carries the message in the request body like POST. Connect's
+[unary QUERY request](/docs/protocol/#unary-query-request) is a unary POST request with the method
+changed to QUERY and nothing else.
+
+QUERY is available for the same procedures as GET: unary procedures marked `NO_SIDE_EFFECTS`. It is
+only used with the Connect protocol.
+
+Services accept QUERY requests by default, so you don't need to change anything on your server. To turn
+QUERY off, pass `enable_query=False` when creating the generated ASGI or WSGI application. Procedures
+then respond to QUERY with `405 Method Not Allowed`.
+
+```python
+app = ElizaServiceASGIApplication(ElizaServiceImpl(), enable_query=False)
+```
+
+Clients must opt in as well. Generated clients include a `use_query` parameter for methods that are marked
+with `NO_SIDE_EFFECTS`.
+
+<Tabs syncKey="python-type">
+  <TabItem label="Async">
+
+    ```python
+    response = await client.say(SayRequest(sentence="Hello"), use_query=True)
+    ```
+
+  </TabItem>
+  <TabItem label="Sync">
+
+    ```python
+    response = client.say(SayRequest(sentence="Hello"), use_query=True)
+    ```
+
+  </TabItem>
+</Tabs>
+
+QUERY replaces POST, not GET. If you pass both `use_get=True` and `use_query=True`, the request is sent
+with GET.
+
+If the server or something between you and the server rejects a QUERY request, for example with a 405 or
+501, the call raises an error. The client never retries a rejected QUERY request as POST, so only use
+`use_query` with servers that support it.
+
+A few practical points before you use QUERY:
+
+- Browsers always send a CORS preflight before a cross-origin QUERY request, because QUERY isn't one of
+  the methods allowed without one. See the [CORS documentation](/docs/cors/).
+- Some proxies, CDNs, and firewalls reject methods they don't recognize, and many caches don't store
+  QUERY responses yet. Check that your infrastructure forwards QUERY before relying on it.
+
 ## Caching
 
-Using GET requests will not necessarily automatically make browsers or proxies cache your RPCs.
+Using GET or QUERY requests will not necessarily automatically make browsers or proxies cache your RPCs.
 To ensure that requests are allowed to be cached, a handler should also set the appropriate headers.
 
 For example, you may wish to set the `Cache-Control` header with a `max-age` directive:
@@ -71,10 +125,10 @@ that may be useful for your application as well; for example, the `private` dire
 the request should only be cached in private caches, such as the user agent itself, and _not_ CDNs or reverse
 proxies — this would be appropriate, for example, for authenticated requests.
 
-## Distinguishing GET Requests
+## Distinguishing GET and QUERY Requests
 
 In some cases, you might want to introduce behavior that only occurs when handling HTTP GET requests.
-This can be accomplished with `RequestContext.http_method`:
+This can be accomplished with `RequestContext.http_method`, which is `"POST"`, `"GET"`, or `"QUERY"`:
 
 ```python
 if ctx.http_method == "GET":
